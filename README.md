@@ -27,7 +27,7 @@ A package for sparse full configuration interaction (SFCI).
 
     `./sfci`
 
-## Integral Generation
+## Reformatting Integrals
 
 Only FCIDUMP format with integrals under the unrestricted HF orbitals is accepeted. For closed shell system this does not affect the result, but we'll make it compatible with HF orbital integrals soon. Now, use `convert_fci.py` to reformat FCIDUMP file:
 
