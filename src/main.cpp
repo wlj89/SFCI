@@ -29,6 +29,7 @@ unsigned int orbitalNum;
 unsigned int electronNum; 
 unsigned int numIteration;
 unsigned int numRestart;
+DET_TYPE init_hf; 
 
 FLOAT_TYPE SpMSpVFinalResCut; 
 unsigned int HPsiCap;
@@ -102,7 +103,8 @@ void parse(string key, string val)
     }
 	else if (key == "init_hf")
 	{
-		;
+		init_hf = stoull(val); 
+        cout <<"using input "<< key  << "=" << init_hf <<endl ;
 	}
 }   
 
@@ -207,7 +209,10 @@ int main()
 	//spaceDim = 500; 
 	cout <<"FCI space size:" << spaceDim <<endl; 
 	cout << "\n****************************************************\n"; 
+
+
     /*
+        
         c2-cc-pVDZ HF: 202125315
 		Ne HF: 12897681423
 	    C2-6-31g* HF:202125315 
@@ -227,7 +232,7 @@ int main()
 	
 	DET_TYPE s = 202125315;  
 	
-	cout <<"E_hf:" << DiagCal_bit(s) <<endl; 	
+	cout <<"E_hf:" << DiagCal_bit(init_hf) <<endl; 	
 	
     //return 0;
 	//RHF();
@@ -237,12 +242,12 @@ int main()
 	//return 0; 
 	//DET_TYPE s= basis_original[min_idx]; 	
     
-	//using HF
-	//st.cpyFromPair(s,1.0);	
+	/using HF
+	/st.cpyFromPair(init_hf,1.0);	
 
     //using SD block ground state 
-    calSD(s,st);
-	cout << "SD energy:" << calEnergy(st);
+    //calSD(s,st);
+	//cout << "SD energy:" << calEnergy(st);
 	
 
     auto t1 = system_clock::now(); 
