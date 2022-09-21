@@ -1,0 +1,7 @@
+Nd=200000
+Nl=10
+num_restart=2
+num_orb=52
+num_e=8
+num_thread=32
+filename=c2-cc-pVDZ-26o8e_IN
