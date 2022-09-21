@@ -21,7 +21,7 @@ A package for sparse full configuration interaction (SFCI).
     
     g) `filename`: file name of input integral. See below for more details. 
     
-    h) `bucket_unit`(optional): bucket memory allocation unit size. Since there is no obvious way to predict the size of buckets in a SpMSpVM, each bucket's memory is allocated generously. The default value is 60000, which is good for most cases. But it might still lead to overflow. If this happens, increase bucket_unit for remedy. 
+    h) `bucket_unit`(optional): bucket memory allocation unit size. Since there is no obvious way to predict the size of buckets in a SpMSpVM, each bucket's memory is allocated generously. The default value is 60000, which is good for the most cases. But it might still lead to overflow. If this happens, increase bucket_unit for remedy. 
 
 3. run with 
 
@@ -29,4 +29,8 @@ A package for sparse full configuration interaction (SFCI).
 
 ## Integral Generation
 
-Only FCIDUMP formatt . This . We will soon fix it.  
+Only FCIDUMP format with integrals under the unrestricted HF orbitals is accepeted. For closed shell system this does not affect the result, but we'll make it compatible with HF orbital integrals soon. Now, use `convert_fci.py` to reformat FCIDUMP file:
+
+    `convert_fci.py sys1_fcidump sys2_fcidump ...`
+
+The reformated integral files will all ends with \_IN, which are now recognizable by the SFCI main program. 
