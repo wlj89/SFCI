@@ -242,8 +242,8 @@ int main()
 	//return 0; 
 	//DET_TYPE s= basis_original[min_idx]; 	
     
-	/using HF
-	/st.cpyFromPair(init_hf,1.0);	
+	//using HF
+	st.cpyFromPair(init_hf,1.0);	
 
     //using SD block ground state 
     //calSD(s,st);

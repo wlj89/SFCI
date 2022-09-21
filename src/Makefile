@@ -10,7 +10,8 @@ HEADERS=all.h
 	$(CC) -c $(FLAGS) $(DIR) -o $@ $< 
 
 sfci: $(OBJ)
-	$(CC) $(FLAGS) $(OBJ) $(DIR) -o sfci
+	$(CC) $(FLAGS) $(OBJ) $(DIR) -o sfci 
+
 $(OBJ):$(HEADERS)
 
 clean:
