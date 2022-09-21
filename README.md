@@ -19,9 +19,11 @@ A package for sparse full configuration interaction (SFCI).
     
     f) `num_thread`: number of cores to be used
     
-    g) `filename`: file name of input integral. See below for more details. 
+    g) `filename`: file name of input integral. See below for more details.
+
+    h) `init_hf`: bitstring of the inital HF determinant written in decimal form. 
     
-    h) `bucket_unit`(optional): bucket memory allocation unit size. Since there is no obvious way to predict the size of buckets in a SpMSpVM, each bucket's memory is allocated generously. The default value is 60000, which is good for the most cases. But it might still lead to overflow. If this happens, increase bucket_unit for remedy. 
+    i) `bucket_unit`(optional): bucket memory allocation unit size. Since there is no obvious way to predict the size of buckets in a SpMSpVM, each bucket's memory is allocated generously. The default value is 60000, which is good for the most cases. But it might still lead to overflow. If this happens, increase bucket_unit for remedy. 
 
 3. run with 
 
