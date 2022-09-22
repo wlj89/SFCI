@@ -31,7 +31,7 @@ A package for sparse full configuration interaction (SFCI).
 
 ## Reformatting Integrals
 
-Only FCIDUMP format with integrals under the unrestricted HF orbitals is accepeted. For closed shell system this does not affect the result, but we'll make it compatible with HF orbital integrals soon. Now, use `utils/convert_fci.py` to reformat FCIDUMP file:
+Only FCIDUMP format with integrals under the unrestricted HF orbitals is accepeted. For closed shell system this does not affect the result, but we'll make it compatible with restricted HF orbital integrals soon. Now, use `utils/convert_fci.py` to reformat FCIDUMP file:
 
     convert_fci.py sys1_fcidump sys2_fcidump ...
 
