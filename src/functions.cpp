@@ -62,6 +62,7 @@ void comb_RHF(int n, int r, int *arr, int sz, vector<DET_TYPE>& basis)
         
         define arr before hand
     */
+	
     for (int i = n; i >= r; i --)
     {
         arr[r - 1] = i;
