@@ -53,7 +53,10 @@ det_bit detToBit(const det k)
 */
 unsigned int nck(int n, int k)
 {
-    // k=0 or k=n -> 1 
+    /*
+		avoid using integer division. 
+	*/
+	// k=0 or k=n -> 1 
     // 
     int kk = k > (n/2) ? (n-k) : k;
     int ans = 1;  
