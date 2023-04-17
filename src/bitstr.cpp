@@ -55,6 +55,7 @@ unsigned int nck(int n, int k)
 {
     /*
 		avoid using integer division. 
+	
 	*/
 	// k=0 or k=n -> 1 
     // 
