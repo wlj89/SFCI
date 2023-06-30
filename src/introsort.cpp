@@ -355,7 +355,7 @@ void adjust_heap_amp(dynVec<DET_TYPE,FLOAT_TYPE>& array,
 
 void make_heap_amp(dynVec<DET_TYPE,FLOAT_TYPE>& array, int begin, int end)
 {
-    if (begin - end < 2) 
+    if (end - begin< 2) 
         return;
     int len = end - begin; 
     int parent = (len-2)/2; 
