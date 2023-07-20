@@ -19,18 +19,21 @@ unsigned int bucketNum;
 unsigned int bucketSize;  
 unsigned int spaceDim; 
 unsigned int bucketSize_bit; 
-unsigned int numConnected; 
+unsigned int numConnected=20000; 
 unsigned int Nd=200000;
 unsigned int bucket_unit=60000;
 
 
 string filename; 
-unsigned int orbitalNum;
+string task;
+
+unsigned int orbitalNum; // number of spin orbitals! 
 unsigned int electronNum; 
 unsigned int numIteration;
 unsigned int numRestart;
 DET_TYPE init_hf; 
 
+FLOAT_TYPE target_energy;
 FLOAT_TYPE SpMSpVFinalResCut; 
 unsigned int HPsiCap;
 
@@ -38,17 +41,19 @@ vector<vector<unsigned int>> nck_list;
 
 using colvec = dynVec<DET_TYPE,FLOAT_TYPE>; 
 
-void calGroundEnergy(colvec&,int,int);
+void sparse_krylov_solve_eigenval(colvec&,int,int);
 void getBasis(colvec&);
 
-void calSD(DET_TYPE, colvec&);
-void calExcitedEnergy(colvec&, int, int, FLOAT_TYPE, FLOAT_TYPE);
+void calc_CISD(DET_TYPE, colvec&, int);
 
-FLOAT_TYPE calEnergy(colvec&);
+FLOAT_TYPE calc_energy(const colvec&);
 
 unsigned long long indexCal(const det_bit&);
 
 void RHF();
+
+void dense_main(); 
+void sparse_main(FLOAT_TYPE);
 
 void parse(string key, string val)
 {
@@ -106,7 +111,18 @@ void parse(string key, string val)
 		init_hf = stoull(val); 
         cout <<"using input "<< key  << "=" << init_hf <<endl ;
 	}
+    else if (key == "task")
+    {
+        task = val;
+        cout <<"using input "<< key  << "=" << task <<endl ;
+    }
+    else if(key == "target_E")
+    {
+        target_energy = stod(val);
+        cout <<"using input "<< key  << "=" << target_energy <<endl ;
+    }
 }   
+
 
 
 void get_paras()
@@ -144,14 +160,19 @@ int main()
 		blockDim: dimension of spin up/down block 
 		nOrb: number of spin orbitals
 		nElectron: number of electrons
-		bucketSize_bit: bucket size.  
+		bucketSize_bit: bucket size in the SpMSpVM 
 		S : the HF determinant in string bit format 	
 	*/
-	
+	   
+    /*
+        obtaining parameters
+    */
     get_paras();
-
+    
+    /*
+        loading re-formatted integrals
+    */
     load_integrals(filename); 
-
     cout << "integrals loaded\n";
 
     unsigned int one = 1; 
@@ -172,7 +193,7 @@ int main()
     bucketNum = (spaceDim/bucketSize) + 1; 
 	HPsiCap = 60000000;
     numConnected = 10000;   
-    SpMSpVFinalResCut = 0.00005; 
+    SpMSpVFinalResCut = 1e-5; 
 
 	omp_set_num_threads(nThread);
     cout << "\n*****************parameters summary*****************\n";
@@ -180,10 +201,11 @@ int main()
     cout << "orbital num:" << orbitalNum<<endl;
     cout << "electron num:" << electronNum <<endl;
     cout << "Nd:"<<Nd<<endl;// = 5000000; 
-    cout << "Nd:"<<Nd<<endl;// = 1000000; 
+    //cout << "Nd:"<<Nd<<endl;// = 1000000; 
 	cout << "core used:" << nThread <<endl;
     cout << "bucket size:" <<bucketSize<<endl;
 	cout << "bucket num:" << bucketNum <<endl; 	
+    cout << "target energy:" << target_energy<<endl;  
     cout << "SpMSpV final result cut:" << SpMSpVFinalResCut <<endl; 
 
     // set up the table for nchoosek 
@@ -207,58 +229,52 @@ int main()
 
     //spaceDim = Nd;
 	//spaceDim = 500; 
-	cout <<"FCI space size:" << spaceDim <<endl; 
+	//cout <<"FCI space size:" << spaceDim <<endl; 
 	cout << "\n****************************************************\n"; 
-
-
+    
+    if (task == "excited")
+    {
+        /*
+            UNDER CONSTRUCTION
+        */
+        //cout << "Excited state energy calculation starts\n"; 
+        //sparse_main(target_energy);
+    }
     /*
         
+        H2O-6-31g HF: 208911
         c2-cc-pVDZ HF: 202125315
 		Ne HF: 12897681423
 	    C2-6-31g* HF:202125315 
         C2-6-31g HF:209667 
 		N2 cc-pVDZ 26o10e HF: 202125327
 		CO : 206208761919
-
+        
 		c2 all electron: 4029726735
 		F2 all e	   : 857623099392063
 	
 	*/
 	
-
     /// start lanczos
+    else if (task=="ground")
+    {
+    	colvec st(Nd);
+    	    	
+    	cout <<"E_hf:" << DiagCal_bit(init_hf) <<endl; 	
+    	
+    	st.cpyFromPair(init_hf,1.0);	
 
-	colvec st(Nd);
-	
-	DET_TYPE s = 202125315;  
-	
-	cout <<"E_hf:" << DiagCal_bit(init_hf) <<endl; 	
-	
-    //return 0;
-	//RHF();
-	
-	//cout << s <<endl; 
+        auto t1 = system_clock::now(); 
+    	//getBasis(st);
+    	sparse_krylov_solve_eigenval(st,numIteration,numRestart);
 
-	//return 0; 
-	//DET_TYPE s= basis_original[min_idx]; 	
-    
-	//using HF
-	st.cpyFromPair(init_hf,1.0);	
-
-    //using SD block ground state 
-    //calSD(s,st);
-	//cout << "SD energy:" << calEnergy(st);
-	
-
-    auto t1 = system_clock::now(); 
-	//getBasis(st);
-	calGroundEnergy(st,numIteration,numRestart);
-	
-	auto t2 = system_clock::now();
-    std::chrono::duration<double> d1 = t2-t1;
-    
-    cout << "SFCI time: " << d1.count() <<endl;
-
+        //sparse_krylov_solve_eigenval_2(st,numIteration,numRestart);
+    	
+    	auto t2 = system_clock::now();
+        std::chrono::duration<double> d1 = t2-t1;
+        
+        cout << "SFCI time: " << d1.count() <<endl;
+    }
     return 0; 	
 	
 }

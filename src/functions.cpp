@@ -4,7 +4,7 @@ void introsort(dynVec<DET_TYPE,FLOAT_TYPE>&, int);
 void introsort_amp(dynVec<DET_TYPE,FLOAT_TYPE>&, int);
 
 int spinCal_bit(const det_bit);
-
+using colvec = dynVec<DET_TYPE,FLOAT_TYPE>; 
 /*
 int spinNumCal(const det& q)
 {   
@@ -88,7 +88,7 @@ void RHF()
 {
 
     /*
-        a stupid restricted Hartree fock 
+        a stupid way to find the determinant
         Sz = 0 
     */
     vector<DET_TYPE> basis; 
@@ -109,7 +109,7 @@ void RHF()
 
         double diag = DiagCal_bit(basis[i]);
 
-        cout << diag <<endl<<endl; 
+        //cout << diag <<endl<<endl; 
 
         if (diag < optimal_diag)
         {
@@ -426,10 +426,10 @@ void printDet(const det& u)
 }
 */
 
-unsigned int mergeBuffer(dynVec<DET_TYPE,FLOAT_TYPE>& buff, unsigned int buffSize)
+unsigned int merge_bucket(dynVec<DET_TYPE,FLOAT_TYPE>& buff, unsigned int buffSize)
 {
     /*
-        Must be sorted before merging,
+        Must be sorted by determinant before merging,
     */
 
     if (buffSize <=1)
@@ -461,15 +461,66 @@ unsigned int mergeBuffer(dynVec<DET_TYPE,FLOAT_TYPE>& buff, unsigned int buffSiz
     buff.amp[mergedSize] = ptrAmp; 
 
     return mergedSize+1; 
+}   
+
+int make_bucket(const colvec& wf_input,
+              vector<colvec>& wf_input_bucketed) 
+{
+    /*
+        make bucketed wf.
+        used in spmspvm to compute Hij efficiently
+    */ 
+    wf_input_bucketed.resize(bucketNum);
+
+    int max_bkt_size = 0;
+
+    vector<int> bucketCnt(bucketNum);
+    fill(bucketCnt.begin(), bucketCnt.end(),0);
+
+
+    for(int i = 0; i< wf_input.len; i++) 
+    {
+        auto bcktN = indexCal(wf_input.basis[i]) / bucketSize; 
+        bucketCnt[bcktN] ++;         
+    }
+
+
+    for(int bucketIdx =0; bucketIdx < bucketNum; bucketIdx ++)
+    {
+        wf_input_bucketed[bucketIdx].reserveMem(bucketCnt[bucketIdx]);
+        max_bkt_size = max(max_bkt_size,bucketCnt[bucketIdx]);
+    }
+
+    for(int i = 0; i< wf_input.len; i++) 
+    {
+        // fill wf_input_bucketed   
+        auto bcktN = indexCal(wf_input.basis[i]) / bucketSize; 
+        wf_input_bucketed[bcktN].cpyFromPair(wf_input.basis[i], wf_input.amp[i]);
+    }
+
+    // parallelize the loop if you wish
+    for (int bucketIdx =0; bucketIdx < bucketNum; bucketIdx ++)
+    {
+        // make each bucket sorted w.r.t determinant
+        introsort(wf_input_bucketed[bucketIdx], wf_input_bucketed[bucketIdx].len);
+    }   
+
+    return max_bkt_size;
 }
 
-void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o, 
-                      dynVec<DET_TYPE, FLOAT_TYPE>& wf_output, 
-                      double lambda, double coeff, FLOAT_TYPE& diag_SpMSpV)
+void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,    //input
+                      dynVec<DET_TYPE, FLOAT_TYPE>& wf_output,     //solution that has been truncated 
+                                             double lambda,        //energy shift
+                                             double coeff, 
+                                        FLOAT_TYPE& diag_SpMSpV)
 {   
     /*
+        Bucketed sparse matrix sparse vector routine.
+
         assume all elements have acsending order 
+        
         How to allocate memory dynamically? 
+
         Calculate <v|H|v> here to avoid loss of accuracy
     */
 
@@ -520,6 +571,9 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
 	
     vector<unsigned int> bucketCnt(bucketNum,0);
 
+    vector<colvec> localBuff;
+    localBuff.resize(bucketNum);
+
     for(int i = st_idx; i< end_idx; i++) 
     {
         auto bcktN = indexCal(wf_input.basis[i]) / bucketSize; 
@@ -527,7 +581,8 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
 	}
 
     /*
-        initialize wf_input_bucketed
+        bucketing wf_input. 
+        to calculate the diagonal alpha
     */ 
 	
     for (int bucketIdx =0; bucketIdx < bucketNum; bucketIdx ++)
@@ -554,7 +609,6 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
     for (int i = 0; i< nThread*bucketNum; i++)
     { 
 		///no prediction
-		
 		//resGlobal[i].reserveMem((len/(nThread*bucketNum)+1) * expand_fac);      
 
 		///with prediction
@@ -562,8 +616,8 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
         resGlobal[i].reserveMem(((bucketCnt[bckt_idx] / nThread) + 4) * expand_fac);   
 	}   
 
-	cout << "bucket mem done\n";
-	cout << st_idx  <<' '<<end_idx <<endl;
+	cout << "bucket memory allocated\n";
+	//cout << st_idx  <<' '<<end_idx <<endl;
 	auto t1 = system_clock::now();    
 	 
     #pragma omp parallel    
@@ -589,7 +643,6 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
         /*  
 		   SPA is much slower than sort-and-merge 
         */      
-		
         #pragma omp for schedule(dynamic)
         for (int i=0; i<bucketNum; i++)
         {
@@ -602,33 +655,33 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
                 localSize += resGlobal[pos].len;
             }   
             
-            dynVec<DET_TYPE, FLOAT_TYPE> localBuff;
-            localBuff.reserveMem(localSize);        
+            //dynVec<DET_TYPE, FLOAT_TYPE> localBuff;
+            localBuff[i].reserveMem(localSize);        
 
             for (int j = 0; j < nThread; j++)
             {
                 unsigned int pos = j + nThread * i;  
-                localBuff.cpyFromVec(resGlobal[pos]);
+                localBuff[i].cpyFromVec(resGlobal[pos]);
             } 
 
-            introsort(localBuff, localSize); 
-			mergedSize = mergeBuffer(localBuff,localSize); 
+            introsort(localBuff[i], localSize); 
+			mergedSize = merge_bucket(localBuff[i],localSize); 
 
-            localBuff.len = mergedSize; 
-
+            localBuff[i].len = mergedSize; 
             /*
                 inner product in the ith bucket 
             */
-            
-			FLOAT_TYPE diag_temp = localBuff.dot(wf_input_bucketed[i]);
+			FLOAT_TYPE diag_temp = localBuff[i].dot(wf_input_bucketed[i]);
 
             #pragma omp atomic
             diagAlpha += diag_temp; 
 
-			introsort_amp(localBuff,mergedSize); 
-
-            #pragma omp critical
-            {   
+			/*
+				critical section might slow things down?  
+			*/
+            
+            //#pragma omp critical
+            //{   
 				/*
                     Copying the important determinants from localBuff     
 					
@@ -636,15 +689,14 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
 						1. keep those with amplitude larger than a certain threashold 
 						2. keep top 5% of each bucket
 				*/  	
-
-
-
-				total_merged += mergedSize; 
+				
+                
 				//unsigned int localBuff_start = mergedSize *(1 - cutoff_ratio) < maxLocalBuff ? 0 : mergedSize*cutoff_ratio;
                 //unsigned int localBuff_start = mergedSize < maxLocalBuff ? 0 : mergedSize - maxLocalBuff; 
 				//unsigned int localBuff_end = mergedSize; 
-
 				//unsigned int offset = resFinal.len - cutoff; // ?  			
+                /*
+                total_merged += mergedSize; 
                 unsigned int copy_idx=0;	
                 
                 // strategy 1 
@@ -657,13 +709,9 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
                         resFinal.amp[resFinal.len + copy_idx] = localBuff.amp[k];    
                         copy_idx++;
                     }
-                    /*
-                    else 
-                    {
-                        cout << localBuff.amp[k] << ' ' << abs(localBuff.amp[k]) <<endl;
-                    }*/
                 }
-                
+                resFinal.len += copy_idx; 
+                */
 
 				/*
                 // strategy 2
@@ -677,19 +725,40 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
                     }
                 }
 				*/
-                resFinal.len += copy_idx; 
+                
                 //(mergedSize - cutoff); 
-            }   
+            //}   
 		}
     }   
-	cout<< "total merged:" << total_merged<<endl;
-    cout <<"final raw vec len:"<< resFinal.len <<endl;
+
+    auto t2 = system_clock::now();   
+	cout << "total merged:" << total_merged<<endl;
+    cout << "final raw vec len:"<< resFinal.len <<endl;
     cout << "value of exact alpha:" << diagAlpha<<endl;  
     
     diag_SpMSpV = diagAlpha; 
 
-    /// stat for memory usage
-	
+    for (int i=0; i< bucketNum; i++)
+    {
+        total_merged += localBuff[i].len;
+
+        unsigned int copy_idx=0;	
+
+        for(unsigned int k = 0; k < localBuff[i].len; k++) 
+		{
+                // taking in non-zero dets 
+            if (abs(localBuff[i].amp[k])>cutoff_val)
+            {    
+                resFinal.basis[resFinal.len + copy_idx] = localBuff[i].basis[k];
+                resFinal.amp[resFinal.len + copy_idx] = localBuff[i].amp[k];    
+                copy_idx++;
+            }   
+        }
+        resFinal.len += copy_idx;
+
+    }
+
+    /// stat of memory usage
 	double r = 0; 
 	for (int i=0; i< resGlobal.size(); i++)
     {
@@ -705,10 +774,8 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
 	}
 	cout <<"max bucket occup ratio:" << r <<endl;
     
-    
-    auto t2 = system_clock::now();      
+    introsort_amp(resFinal,resFinal.len);
 
-    
     unsigned int st = resFinal.len < wf_output.cap ? 0 : resFinal.len - wf_output.cap;
 	
 	//the following step removes dets with 0 amplitude
@@ -716,18 +783,13 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
 
     for(int i=st; i < resFinal.len; i++)
     {
-        //if( abs (resFinal.amp[i]) > 1e-14)
-		//{
 		wf_output.basis[i-st] = resFinal.basis[i];  
 		wf_output.amp[i-st] = resFinal.amp[i]; 
-            //copy_idx ++;
-		//}
-		 
-	}   
+	}  
+
     wf_output.len = resFinal.len - st; 
 	//wf_output.len = resFinal.len - st; 
 
-    // put back to determinant-major 
 	introsort(wf_output,wf_output.len);    
 
     auto t3 = system_clock::now();
@@ -736,12 +798,478 @@ void SpMVMtply_bucket(dynVec<DET_TYPE, FLOAT_TYPE>& wf_input_o,
     std::chrono::duration<double> d2 = t3-t2;
 
     cout << "generating time: "<< d1.count() <<endl;
-    cout << "merging time " << d2.count() <<endl; 
+    cout << "final merging time: " << d2.count() <<endl; 
     
     return;
 }
+ 
+
+void add_bucketed_vec(vector<vector<colvec>>& basis_bucketed,
+                                      colvec& result,
+                                      ColVec& y)
+{
+    /*
+        compute xm = Vm * y at the end
+        each vector in Vm is bucketed. 
+    */  
+    int num_vec = y.size();
+    int result_size = 0; 
+    vector<colvec> temp(bucketNum);
+
+    //#pragma omp parallel for
+    for (int i=0; i< bucketNum; i++)
+    {
+        //colvec temp;
+        int total_size = 0;
+        
+        for (int j=0; j<num_vec; j++)
+            total_size += basis_bucketed[j][i].len;
+
+        temp[i].reserveMem(total_size);
+
+        result_size += total_size; 
+    }
+
+    result.reserveMem(result_size);
+
+    for (int i=0; i< bucketNum; i++)
+    {
+
+        for (int j=0; j<num_vec; j++)    
+        {
+            basis_bucketed[j][i].scalarMtply(y(j));
+            temp[i].cpyFromVec(basis_bucketed[j][i]);
+        }
+
+        introsort(temp[i],temp[i].len);
+
+        int merged_len = merge_bucket(temp[i], temp[i].len);
+
+        temp[i].len = merged_len;
+
+        //copy to the result vec
+        result.cpyFromVec(temp[i]);
+    }
+
+    introsort(result, result.len);
+}
+
+
+void spmspvm_bucket_linear(const dynVec<DET_TYPE, FLOAT_TYPE>& wf_input,    //input
+                                 dynVec<DET_TYPE, FLOAT_TYPE>& wf_output,     //solution that has been truncated 
+                                                    FLOAT_TYPE lambda,        //energy shift    
+                                           vector<FLOAT_TYPE>& Hij,
+                                       vector<vector<colvec>>& basis_bucketed,
+                                                           int max_wf_bkt_size,  // max bucket size in bucket wf. 
+                                                           int current_idx)   
+{   
+    /*
+        Bucketed sparse matrix sparse vector routine for linear solver
+        w = Ax
+        w.dot(v_i) are all carried out within, so that w can be disposed afterward
+
+        all i <= current_idx are considered. 
     
-FLOAT_TYPE calEnergy(dynVec<DET_TYPE,FLOAT_TYPE>& psi)
+    */
+
+    using colvec = dynVec<DET_TYPE,FLOAT_TYPE>; 
+
+    if (wf_input.len ==0)
+    {
+        wf_output.setZeroVec();
+        return;
+    }  
+
+    auto t1 = system_clock::now();    
+
+    std::fill(Hij.begin(),Hij.end(),0);
+
+    unsigned int expand_fac = bucket_unit;     
+    unsigned int expand_fac_final = 5000; 
+        
+    unsigned int st_idx = 0;  
+    unsigned int end_idx = wf_input.len; 
+
+    unsigned int total_merged = 0;
+
+    FLOAT_TYPE cutoff_val = SpMSpVFinalResCut;
+
+    FLOAT_TYPE diagAlpha = 0.0; 
+    
+    //Allocate space for buckets 
+    vector<colvec> bucket_intermediate;
+
+    // resultant sparse vector 
+    colvec resFinal;  
+
+    vector<colvec> wf_input_bucketed(bucketNum);
+
+    bucket_intermediate.resize(nThread*bucketNum);
+    resFinal.reserveMem(wf_input.len*expand_fac_final);
+
+    /*
+        idx = thread_idx + thread_num * bucket_idx
+    */  
+    
+    vector<unsigned int> bucketCnt(bucketNum,0);
+
+    vector<colvec> bucket_final;
+    bucket_final.resize(bucketNum);
+
+    /*
+        estimate size of each bucket.
+        Not perfect. 
+    */
+    
+    for(int i = st_idx; i< end_idx; i++) 
+    {
+        unsigned long long bcktN = indexCal(wf_input.basis[i]) / bucketSize; 
+        bucketCnt[bcktN] ++;         
+    }
+
+    for (int i = 0; i< nThread*bucketNum; i++)
+    { 
+        ///no prediction   
+        //resGlobal[i].reserveMem((len/(nThread*bucketNum)+1) * expand_fac);      
+        ///with prediction
+        int bckt_idx = i / nThread;
+        bucket_intermediate[i].reserveMem(((bucketCnt[bckt_idx] / nThread) + 4) * expand_fac);   
+    } 
+
+    //cout << "bucket memory allocated\n";
+    //cout << st_idx  <<' '<<end_idx <<endl;
+    
+    
+    #pragma omp parallel    
+    {          
+        #pragma omp for schedule(static, 32) 
+        for (int i=st_idx; i< end_idx; i++) 
+        {   
+            unsigned int thread_idx = omp_get_thread_num(); 
+            
+            auto basis_i = wf_input.basis[i];
+            auto amp_i = wf_input.amp[i]; 
+
+            //double temp = coeff * amp_i;
+            OffDiagGen_bit(basis_i,amp_i,bucket_intermediate,thread_idx);  
+            
+            double diag_coeff = (DiagCal_bit(basis_i) - lambda) * amp_i;  
+            unsigned int pos = thread_idx + nThread * (indexCal(basis_i) >> bucketSize_bit ); 
+            bucket_intermediate[pos].cpyFromPair(basis_i,diag_coeff);
+        }
+
+        #pragma omp barrier 
+        /*  
+           merging buckets calculate off-diag element
+        */      
+        #pragma omp for schedule(dynamic)
+        for (int i=0; i<bucketNum; i++)
+        {
+            unsigned int localSize = 0;
+            unsigned int mergedSize; 
+
+            for (int j = 0; j < nThread; j++)
+            {    
+                unsigned int pos = j + nThread * i;  
+                localSize += bucket_intermediate[pos].len;
+            }   
+            
+            // dynamic allocation might slow things down/ 
+            // 2*max_wf_bkt_size leaves sufficient space for 2 additions (vi & v{i-1})
+            bucket_final[i].reserveMem(localSize + 2*max_wf_bkt_size);        
+
+            for (int j = 0; j < nThread; j++)
+            {
+                unsigned int pos = j + nThread * i;  
+                bucket_final[i].cpyFromVec(bucket_intermediate[pos]);
+            } 
+
+            introsort(bucket_final[i], localSize); 
+            mergedSize = merge_bucket(bucket_final[i],localSize); 
+
+            bucket_final[i].len = mergedSize; 
+
+            /*
+                calculate Hij with j <= current_idx 
+            */
+            for (int j = current_idx; j >=0; j--)
+            {
+                FLOAT_TYPE val_temp = bucket_final[i].dot(basis_bucketed[j][i]);
+
+                #pragma omp atomic 
+                Hij[j] += val_temp;
+            }   
+        }
+
+        #pragma omp barrier 
+        /*
+            w = A* v_i - alpha_i * v_i - beta_{i-1} * v_{i-1}
+
+            One could develop this step into a full orthogonalization, but the benefit could be little.
+                        
+            each bucket_final[i] is a compressed colvec
+        */
+        #pragma omp for schedule(dynamic)
+        for (int i=0; i<bucketNum; i++)
+        {   
+            bucket_final[i].addTwo(basis_bucketed[current_idx][i],-Hij[current_idx]); 
+        
+            if (current_idx > 0) 
+            {
+                bucket_final[i].addTwo(basis_bucketed[current_idx-1][i],-Hij[current_idx-1]);
+            } 
+        }  
+    }   
+
+    auto t2 = system_clock::now();   
+    
+    /*
+        merging buckets in the final result
+        ignore determinants with very small amplitude
+    */
+    for (int i=0; i< bucketNum; i++)
+    {
+        total_merged += bucket_final[i].len;
+
+        unsigned int copy_idx=0;    
+
+        for(unsigned int k = 0; k < bucket_final[i].len; k++) 
+        {
+            if (abs(bucket_final[i].amp[k])>cutoff_val)
+            {    
+                resFinal.basis[resFinal.len + copy_idx] = bucket_final[i].basis[k];
+                resFinal.amp[resFinal.len + copy_idx] = bucket_final[i].amp[k];    
+                copy_idx++;
+            }
+        }
+        resFinal.len += copy_idx;
+
+    }
+
+    //cout << "size of all buckets:" << total_merged<<endl;
+    //cout << "final raw vec len:"<< resFinal.len <<endl;
+
+    /// stat for memory usage
+    double r = 0; 
+    for (int i=0; i< bucket_intermediate.size(); i++)
+    {
+        double a = bucket_intermediate[i].len;
+        double b = bucket_intermediate[i].cap;
+        //cout << a <<' '<<b<<endl;
+        a /= b;
+        
+        //cout << "occup rate:" << a <<endl<<endl;
+        if (a>r) 
+            r = a; 
+    }
+
+    //cout <<"max bucket occupation ratio:" << r <<endl;
+    
+    introsort_amp(resFinal,resFinal.len);
+    
+    unsigned int st = resFinal.len < wf_output.cap ? 0 : resFinal.len - wf_output.cap;
+    
+    int copy_idx =0 ;
+
+    for(int i=st; i < resFinal.len; i++)
+    {
+
+        wf_output.basis[i-st] = resFinal.basis[i];  
+        wf_output.amp[i-st] = resFinal.amp[i];  
+    }   
+    wf_output.len = resFinal.len - st; 
+    //wf_output.len = resFinal.len - st; 
+
+    introsort(wf_output,wf_output.len);    
+
+    auto t3 = system_clock::now();
+
+    std::chrono::duration<double> d1 = t2-t1;
+    std::chrono::duration<double> d2 = t3-t1;
+
+    //cout << "generating time: "<< d1.count() <<endl;
+    //cout << "final merging time: " << d2.count() <<endl; 
+    cout << "time of a single spmspvm:" << d2.count () <<endl; 
+    return;
+}
+
+FLOAT_TYPE spmspvm_bucket_res_norm(const colvec& wf_input,    //input
+                                         colvec& wf_output,
+                                 vector<colvec>& b,
+                                      FLOAT_TYPE lambda,
+                                             int max_wf_bkt_size)
+{   
+    /*
+        Bucketed sparse matrix sparse vector routine for residue norm 
+        calculation in the linear solver
+    */
+
+    using colvec = dynVec<DET_TYPE,FLOAT_TYPE>; 
+
+    unsigned int expand_fac = bucket_unit;     
+    unsigned int expand_fac_final = 5000; 
+        
+    unsigned int st_idx = 0;  
+    unsigned int end_idx = wf_input.len; 
+
+    unsigned int total_merged = 0;
+
+    FLOAT_TYPE cutoff_val = SpMSpVFinalResCut;
+
+    FLOAT_TYPE residue = 0.0; 
+    
+    //Allocate space for buckets 
+    vector<colvec> bucket_intermediate;
+
+    // resultant sparse vector 
+    colvec resFinal;  
+
+    //vector<colvec> wf_input_bucketed(bucketNum);
+
+    bucket_intermediate.resize(nThread*bucketNum);
+    resFinal.reserveMem(wf_input.len*expand_fac_final);
+
+    /*
+        idx = thread_idx + thread_num * bucket_idx
+    */  
+    
+    vector<unsigned int> bucketCnt(bucketNum,0);
+
+    vector<colvec> bucket_final;
+    bucket_final.resize(bucketNum);
+
+    /*
+        estimate size of each bucket.
+        Not perfect. 
+    */
+    
+    for(int i = st_idx; i< end_idx; i++) 
+    {
+        unsigned long long bcktN = indexCal(wf_input.basis[i]) / bucketSize; 
+        bucketCnt[bcktN] ++;         
+    }
+
+    for (int i = 0; i< nThread*bucketNum; i++)
+    { 
+        ///no prediction   
+        //resGlobal[i].reserveMem((len/(nThread*bucketNum)+1) * expand_fac);      
+        ///with prediction
+        int bckt_idx = i / nThread;
+        bucket_intermediate[i].reserveMem(((bucketCnt[bckt_idx] / nThread) + 4) * expand_fac);   
+    } 
+
+    //cout << "bucket memory allocated\n";
+    //cout << st_idx  <<' '<<end_idx <<endl;
+    auto t1 = system_clock::now();    
+    
+    #pragma omp parallel    
+    {          
+        #pragma omp for schedule(static, 32) 
+        for (int i=st_idx; i< end_idx; i++) 
+        {   
+            unsigned int thread_idx = omp_get_thread_num(); 
+            
+            auto basis_i = wf_input.basis[i];
+            auto amp_i = wf_input.amp[i]; 
+
+            //double temp = coeff * amp_i;
+            OffDiagGen_bit(basis_i,amp_i,bucket_intermediate,thread_idx);  
+            
+            double diag_coeff = (DiagCal_bit(basis_i) - lambda) * amp_i;  
+            unsigned int pos = thread_idx + nThread * (indexCal(basis_i) >> bucketSize_bit ); 
+            bucket_intermediate[pos].cpyFromPair(basis_i,diag_coeff);
+        }
+
+        #pragma omp barrier 
+        /*  
+           merging buckets calculate off-diag element
+        */      
+        #pragma omp for schedule(dynamic)
+        for (int i=0; i<bucketNum; i++)
+        {
+            unsigned int localSize = 0;
+            unsigned int mergedSize; 
+
+            for (int j = 0; j < nThread; j++)
+            {    
+                unsigned int pos = j + nThread * i;  
+                localSize += bucket_intermediate[pos].len;
+            }   
+            
+            // dynamic allocation might slow things down/ 
+            // 2*max_wf_bkt_size leaves sufficient space for 2 additions (vi & v{i-1})
+            bucket_final[i].reserveMem(localSize + 2*max_wf_bkt_size);        
+
+            for (int j = 0; j < nThread; j++)
+            {
+                unsigned int pos = j + nThread * i;  
+                bucket_final[i].cpyFromVec(bucket_intermediate[pos]);
+            } 
+
+            introsort(bucket_final[i], localSize); 
+            mergedSize = merge_bucket(bucket_final[i],localSize); 
+
+            bucket_final[i].len = mergedSize; 
+        }
+
+        #pragma omp barrier 
+        /*
+            compute Ax - b
+        */
+        #pragma omp for schedule(dynamic)
+        for (int i=0; i<bucketNum; i++)
+        {   
+            bucket_final[i].addTwo(b[i],-1.0); 
+            
+            #pragma omp atomic 
+            residue += pow(bucket_final[i].norm(),2);
+            
+        }  
+    }       
+
+    // final merge
+
+    for (int i=0; i< bucketNum; i++)
+    {
+        unsigned int copy_idx=0;    
+
+        for(unsigned int k = 0; k < bucket_final[i].len; k++) 
+        {
+            if (abs(bucket_final[i].amp[k])>cutoff_val)
+            {    
+                resFinal.basis[resFinal.len + copy_idx] = bucket_final[i].basis[k];
+                resFinal.amp[resFinal.len + copy_idx] = bucket_final[i].amp[k];    
+                copy_idx++;
+            }
+        }
+        resFinal.len += copy_idx;
+
+    }
+
+    //cout << "size of all buckets:" << total_merged<<endl;
+    //cout << "final raw vec len:"<< resFinal.len <<endl;
+    
+    introsort_amp(resFinal,resFinal.len);
+    
+    unsigned int st = resFinal.len < wf_output.cap ? 0 : resFinal.len - wf_output.cap;
+    
+    int copy_idx =0 ;
+
+    for(int i=st; i < resFinal.len; i++)
+    {
+
+        wf_output.basis[i-st] = resFinal.basis[i];  
+        wf_output.amp[i-st] = resFinal.amp[i];  
+    }   
+    wf_output.len = resFinal.len - st; 
+
+    introsort(wf_output,wf_output.len);    
+
+    return sqrt(residue);
+}
+
+
+FLOAT_TYPE calc_energy(const dynVec<DET_TYPE,FLOAT_TYPE>& psi)
 {
     /*
         expectation energy  
@@ -783,3 +1311,4 @@ FLOAT_TYPE calEnergy(dynVec<DET_TYPE,FLOAT_TYPE>& psi)
     return energy;  
 
 }
+

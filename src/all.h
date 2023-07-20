@@ -17,11 +17,14 @@
 #include <ctime>
 #include <cstdlib>
 #include <Eigen/Eigen>
+#include <Eigen/Dense>
+#include <Eigen/SparseLU>
 #include <unsupported/Eigen/IterativeSolvers>
 #include <random>
 #include <omp.h>
 #include <bitset>
 #include <stdexcept>
+
 
 
 /*
@@ -142,20 +145,21 @@ extern unsigned int HPsiCap;
 extern vector<vector<unsigned int>> nck_list; 
 extern FLOAT_TYPE SpMSpVFinalResCut;
 
+extern DET_TYPE init_hf;
+
 template <typename DET, typename COEFF>
 class dynVec
 {   
-
     /*
         data structure for the wave function 
     */
 
 public:
-    unsigned int len;
-    unsigned int cap;
+    unsigned int len;    // actual # of determinant 
+    unsigned int cap;    // capacity 
 
-    DET *basis;
-    COEFF *amp; 
+    DET *basis = NULL;
+    COEFF *amp = NULL; 
 
     dynVec()
     {
@@ -178,6 +182,7 @@ public:
     {
         len = 0;
         cap = resNum; 
+
         basis = new DET[resNum];
         amp = new COEFF[resNum];    
     }
@@ -188,6 +193,19 @@ public:
         delete [] amp; 
     }   
     
+    void checkOrder()
+    {
+        for (int i=1; i<len; i++)
+        {
+            if (basis[i] < basis[i-1])
+            {
+                cout << "WARNING: not in ascending order!!!"; 
+                break; 
+            }
+
+        }
+    }
+
     void cpyFromVec(const dynVec<DET,COEFF>& src)
     {
         #pragma omp simd 
@@ -251,6 +269,14 @@ public:
         FLOAT_TYPE n = norm();
         scalarMtply(1.0/n);  
     }
+    
+    void shrinkInPlace(const unsigned int len)
+    {
+        void introsort_amp(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
+        void introsort(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
+
+        introsort_amp(*this,len);   
+    }
 
     void shrinkFrom(dynVec<DET,COEFF>& src)
     {
@@ -268,7 +294,24 @@ public:
         } 
 
         len = src.len - st_idx; 
+
         introsort(*this,len); 
+    }
+
+    void merge()
+    {
+        /*
+            remove determinant duplicacy 
+        */
+        unsigned int merge_bucket(dynVec<DET_TYPE,FLOAT_TYPE>&, unsigned int); 
+        void introsort(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
+
+        introsort(*this,len);
+
+        unsigned int merged_size = merge_bucket(*this,len);
+
+        len = merged_size; 
+
     }
 
     FLOAT_TYPE dot(const dynVec<DET,COEFF>& src)
@@ -364,27 +407,25 @@ public:
     void addTwo(const dynVec<DET,COEFF>& w, FLOAT_TYPE a)
     {
         /*
-            v = v+ a*w 
+            v = v+ a*w , and truncate. 
             No need to sort at the first place 
         */
 		//cout << "beep"<<endl;
         void introsort_amp(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
         void introsort(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
-        unsigned int mergeBuffer(dynVec<DET_TYPE,FLOAT_TYPE>&, unsigned int); 
+        unsigned int merge_bucket(dynVec<DET_TYPE,FLOAT_TYPE>&, unsigned int); 
 
         dynVec<DET,COEFF> temp; 
         temp.reserveMem(w.len + len);   
 		 
-        /*
-            Copy with order
-        */
         unsigned int idx_this = 0;
-        unsigned int idx_w = 0; 
-
+        unsigned int idx_w = 0;     
+        
         while( idx_this < len && idx_w < w.len)
         {
             /*
-                copying two sorted arraies
+                copying two determinant-major sorted arrays
+                to form the 3rd that is still ordered
             */  
 
             if(basis[idx_this] < w.basis[idx_w])
@@ -412,7 +453,7 @@ public:
         }
         
 		//cout << "asd"<<endl;
-        unsigned int merged_len = mergeBuffer(temp,temp.len);  
+        unsigned int merged_len = merge_bucket(temp,temp.len);  
         introsort_amp(temp,merged_len);   
 
         //taking the top ones in
@@ -451,7 +492,7 @@ public:
 
         void introsort_amp(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
         void introsort(dynVec<DET_TYPE,FLOAT_TYPE>&,int);
-        unsigned int mergeBuffer(dynVec<DET_TYPE,FLOAT_TYPE>&, unsigned int); 
+        unsigned int merge_bucket(dynVec<DET_TYPE,FLOAT_TYPE>&, unsigned int); 
 
         dynVec<DET,COEFF> temp;  
         temp.reserveMem(x.len + y.len + z.len); 
@@ -541,7 +582,7 @@ public:
             idx_z++;
         }   
 
-        unsigned int merged_len = mergeBuffer(temp,temp.len);  
+        unsigned int merged_len = merge_bucket(temp,temp.len);  
         introsort_amp(temp,merged_len);   
 		//cout << "addThree amp sort done\n";
         // updating len of self object 
@@ -569,7 +610,7 @@ public:
     void naiveCopy(const dynVec<DET,COEFF>& src)
     {
         /*
-            No boundary check here. 
+            Copy without boundary check 
         */
         len = src.len; 
 

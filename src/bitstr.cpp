@@ -134,7 +134,7 @@ double signCal_bit(const det_bit& ref, int p, int q)
 {
 	//assume p < q. using bit tricks
     
-	bool cnt = true; 
+	//bool cnt = true; 
 	det_bit temp = ref; 
 	int one = 1; 
 
@@ -304,6 +304,10 @@ void OffDiagGen_bit(const DET_TYPE reff,
 void OffDiagGen_bit_e(const DET_TYPE reff, dynVec<DET_TYPE,FLOAT_TYPE>& tgt)
                      
 {
+    /*
+        unlike the previous function, this version of offDiagGen is used under 
+        a non-threading context. 
+    */
     tgt.reserveMem(numConnected); 
 
     det_bit one = 1;

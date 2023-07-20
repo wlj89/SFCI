@@ -1,17 +1,22 @@
  #include "all.h"
 
+/*
+    sparse solvers
+    
+*/
+
 using colvec = dynVec<DET_TYPE,FLOAT_TYPE>; 
 
-FLOAT_TYPE calEnergy(dynVec<DET_TYPE,FLOAT_TYPE>&);
+
 
 //int spinNumCal(const det);
 //det bitToDet(const det_bit); 
 
-void calSD(DET_TYPE hf_det, colvec& result) 
+void calc_CISD(DET_TYPE hf_det, colvec& result, int state_idx) 
 {
     /**
-        Diagonalize the single and double excitation block. 
-        Similar to Semi-stochastic qmc and i-FCIQMC
+        Diagonalize the CISD block. 
+
     */
     void OffDiagGen_bit_e(const DET_TYPE, dynVec<DET_TYPE,FLOAT_TYPE>&);
     FLOAT_TYPE DiagCal_bit(const DET_TYPE); 
@@ -37,6 +42,7 @@ void calSD(DET_TYPE hf_det, colvec& result)
     }
 	cout << offDiag_set.size() <<endl; 
     int len = basis.size(); 
+        
     cout << "SD block size: " << basis.size()<<endl; 
 
     for(int i=0; i<basis.size(); i++)
@@ -89,11 +95,15 @@ void calSD(DET_TYPE hf_det, colvec& result)
     saes.compute(HH);
     auto eigenval = saes.eigenvalues();
     auto eigenvec = saes.eigenvectors();
-    auto coeff = eigenvec.col(0);
+
+    auto coeff = eigenvec.col(state_idx);
 	
+    cout << "10 lowest states" <<endl; 
+
+    cout << eigenval.head(10) <<endl;
 	//cout << coeff <<endl; 
 
-    cout <<"From CISD: "<<eigenval(0)<<endl<<endl;
+    cout <<"From CISD: "<<eigenval(state_idx)<<endl<<endl;
 
     for(int i=0; i<len; i++)
     {
@@ -233,7 +243,7 @@ void getBasis(colvec& v)
     cout << S <<endl; 
 }
 */
-void calGroundEnergy(colvec& v,int numI,int numR)
+void sparse_krylov_solve_eigenval(colvec& v,int numI,int numR)
 {
     /**
         Core of Lanzcos.
@@ -244,9 +254,9 @@ void calGroundEnergy(colvec& v,int numI,int numR)
 
     void introsort(colvec&, int);
     void introsort_amp(colvec&, int);
-    unsigned int mergeBuffer(colvec&, unsigned int);
+    unsigned int merge_bucket(colvec&, unsigned int);
 
-    FLOAT_TYPE calEnergy(dynVec<DET_TYPE,FLOAT_TYPE>&);
+    FLOAT_TYPE calc_energy(const dynVec<DET_TYPE,FLOAT_TYPE>&);
 
     //cout << "num of threads used:" << nbThreads() <<endl<<endl;
 
@@ -259,7 +269,7 @@ void calGroundEnergy(colvec& v,int numI,int numR)
     FLOAT_TYPE deltaE = 0.00001;
     FLOAT_TYPE previousE = 0.0; 
     FLOAT_TYPE nearestE = -1000000.0;
-    
+
     int nearestIdx = 0; 
 
     //M KrylovBasis(spaceDim,numIterations);
@@ -434,10 +444,8 @@ void calGroundEnergy(colvec& v,int numI,int numR)
 
         //time_dur d_S = t_S_end - t_S_start;
         //cout << "filling the S matrix:" << d_S.count()<<endl; 
-		cout << "hessenberg\n";
-		cout << KrylovM <<endl<<endl;
-        cout << "overlap"<<endl; 
-		cout << S <<endl<<endl; 
+
+        //cout << S <<endl<<endl; 
         
         gsaes.compute(KrylovM,S);
         auto lambda_gsaes = gsaes.eigenvalues();
@@ -446,9 +454,7 @@ void calGroundEnergy(colvec& v,int numI,int numR)
         auto eigenvec = gsaes.eigenvectors();
 
         /*
-        
             filter out the spurious solutions 
-        
         */
         
         double maxGap; 
@@ -497,7 +503,7 @@ void calGroundEnergy(colvec& v,int numI,int numR)
         }   
 
         introsort(vv,vv.len);
-        unsigned int merged_len = mergeBuffer(vv,vv.len);
+        unsigned int merged_len = merge_bucket(vv,vv.len);
 		
         cout <<"Psi_res len:"<< merged_len <<endl; 
         vv.len = merged_len;
@@ -510,7 +516,7 @@ void calGroundEnergy(colvec& v,int numI,int numR)
         v.shrinkFrom(vv);
         v.normalize(); 
         
-        cout << "energy Psi_res after truncation:" << calEnergy(v)<<endl;
+        cout << "energy Psi_res after truncation:" << calc_energy(v)<<endl;
 
 		//cout << KrylovM <<endl; 		
 
@@ -536,6 +542,268 @@ void calGroundEnergy(colvec& v,int numI,int numR)
 
 
     }
-	cout << "final e:"<< calEnergy(v)<<endl;
+	cout << "final e:"<< calc_energy(v)<<endl;
+
+
+}
+
+
+void sparse_krylov_solve_eigenval_2(colvec& v,int numI,int numR)
+{
+    /*
+        a more efficient sparse eigen solver
+    */
+
+    
+    
+}
+
+void sparse_krylov_solve_linear(colvec& b, 
+                                colvec& result_final,
+                             FLOAT_TYPE target_energy,
+                           unsigned int num_iter,
+                           unsigned int num_restart)
+{
+    /*
+        sparse Krylov linear solver under the SFCI wavefunction.
+        use x0 = 0  and b with |b|=1  
+    */
+    void spmspvm_bucket_linear( const colvec&,
+                                      colvec&,
+                                   FLOAT_TYPE, 
+                          vector<FLOAT_TYPE>&,
+                      vector<vector<colvec>>&,
+                                      int,int);
+
+    int make_bucket(const colvec&, vector<colvec>&);
+
+    void add_bucketed_vec(vector<vector<colvec>>&,
+                                          colvec&,
+                                          ColVec&);
+
+    FLOAT_TYPE spmspvm_bucket_res_norm( const colvec&,
+                                             colvec&,
+                                        vector<colvec>&,
+                                            FLOAT_TYPE,
+                                                int);
+
+    FLOAT_TYPE DiagCal_bit(const DET_TYPE);
+
+    int max_bkt_size=0; 
+
+    //M hessenberg_rec(num_iter+1,num_iter);
+    M hessenberg(num_iter+1, num_iter+1);
+    M s(num_iter+1,num_iter+1);
+
+    vector<FLOAT_TYPE> Hij(num_iter+1);
+
+    //basis
+    vector<colvec> krylov_basis;
+    krylov_basis.resize(num_iter+1);
+
+    for (int i=0; i< num_iter+1; i++)
+        krylov_basis[i].reserveMem(Nd); 
+
+    //buckted basis
+    vector<vector<colvec>> krylov_basis_bucketed;
+    krylov_basis_bucketed.resize(num_iter+1);
+
+    vector<colvec> b_buckted;
+    make_bucket(b,b_buckted);
+
+    colvec result;  // Vm*y
+    colvec w(Nd); 
+    colvec r0(Nd);
+
+    colvec x_m(Nd);
+
+    // explicitly assume x0=0
+    r0.naiveCopy(b);
+
+    for (int res = 0; res < num_restart; res++)
+    {
+        double beta = r0.norm(); 
+
+        krylov_basis[0].naiveCopy(r0);
+        krylov_basis[0].normalize();
+   
+        cout << "initial residue: " << beta <<endl;  
+
+        for (int i=0; i< num_iter+1; i++)   
+        {
+            int bkt_size_temp = make_bucket(krylov_basis[i], krylov_basis_bucketed[i]);
+            
+            //cout << "basis vector bucketed" <<endl; 
+
+            max_bkt_size = max(max_bkt_size,bkt_size_temp);
+
+            spmspvm_bucket_linear(  krylov_basis[i],
+                                    w,
+                                    target_energy,
+                                    Hij,
+                                    krylov_basis_bucketed,
+                                    max_bkt_size,
+                                    i);
+
+            for(int j=i; j>=0; j--)
+            {
+                hessenberg(j,i) = Hij[j];
+                hessenberg(i,j) = hessenberg(j,i);
+
+                s(i,j) = krylov_basis[j].dot(krylov_basis[i]);
+                s(j,i) = s(i,j);  
+            }
+
+            w.normalize(); 
+
+            if ( i< num_iter )
+                krylov_basis[i+1].naiveCopy(w);
+
+        }   
+
+        M hessenberg_rec = hessenberg.block(0,0,num_iter+1,num_iter);
+
+        //cout << hessenberg_rec <<endl; 
+
+        cout << "hessenberg\n"  << hessenberg <<endl <<endl; 
+
+        cout << "overlap\n" << s <<endl; 
+
+        /*
+            solve the least sqaure 
+
+            or, use inverse as in FOM? 
+        */
+
+        ColVec e1 = s.col(0);
+        e1 = e1*beta;
+
+        ColVec y = (s * hessenberg_rec).colPivHouseholderQr().solve(e1);
+
+        /*
+            calculate xm = x0+ Vm*y 
+        */  
+        add_bucketed_vec(krylov_basis_bucketed, result, y);
+
+        cout << "length of final result: ";
+        cout << result.len << endl;
+        //colvec result_shrinked(Nd);
+
+        /*
+            calculate |b - Ax|
+        */
+        /*
+        cout << "actual residue: " << spmspvm_bucket_res_norm( result, 
+                                                        b_buckted, 
+                                                        target_energy,
+                                                        max_bkt_size) <<endl;
+        
+        */
+        /*
+            x_m = x_m + Vm *y 
+        */
+        x_m.addTwo(result,1.0);
+        //x_m.shrinkFrom(result);
+
+        // also return r0 = b - A*x_m 
+        cout << "residue after truncation: " 
+             << spmspvm_bucket_res_norm( x_m, 
+                                         r0,
+                                         b_buckted, 
+                                         target_energy,
+                                         max_bkt_size) <<endl;
+
+        /*
+            returned r0 is in fact A*x_m - b. 
+            need a minus sign. 
+        */
+        r0.scalarMtply(-1.0);
+        //cout <<endl;
+        cout << "norm of r0:" << r0.norm() <<endl;
+
+        cout << "*************************restart " << res << " ends*************************\n"; 
+    }
+    
+    result_final.naiveCopy(x_m);
+
+    return; 
+
+}
+
+void sparse_solve_SI(colvec& b, FLOAT_TYPE target_energy)
+{
+
+    /*
+
+        lambda = (Ei + E_(i-1)) /2
+    */
+
+    FLOAT_TYPE calc_energy(const colvec&);
+
+    colvec result(Nd);
+
+    double Ei = target_energy;
+
+    for (int i=0; i< 1; i++ )
+    {
+        cout << "################################################################\n";
+        cout << i << "th SI starts"  <<endl; 
+        cout << "using target energy: " << target_energy <<endl;
+
+        sparse_krylov_solve_linear(b,result,target_energy,numIteration,numRestart); 
+
+        b.naiveCopy(result);
+        b.normalize();
+
+        FLOAT_TYPE Ei_temp =  calc_energy(b);
+        cout << "energy after " << i << "th SI:" << Ei_temp <<endl;
+
+
+        if (abs(Ei_temp - Ei) < 5E-6)  break;
+
+        Ei = Ei_temp; 
+
+        //target_energy = 0.5*(target_energy + Ei);
+
+        cout << "################################################################\n";
+    }
+
+    return;
+}
+
+void sparse_main(FLOAT_TYPE target_energy)
+{
+    void calc_CISD(DET_TYPE, colvec&, int);
+    /*
+    void generateBasis( vector<DET_TYPE>&, unordered_map<DET_TYPE,int>&);
+    
+    unsigned seed = 6123123;
+
+    colvec sparse_b(Nd);
+
+    vector<DET_TYPE> basis;    
+    unordered_map<DET_TYPE,int> basis_idx;
+
+    generateBasis(basis,basis_idx);
+    int spaceDim = basis.size();
+
+    cout << "space dim:" << spaceDim <<endl;
+    sparse_b.cpyFromPair(basis[spaceDim/223+61],1.0);
+    */
+
+    colvec b0(Nd);
+
+    DET_TYPE hf_det = init_hf; 
+
+    // using 1st state in CISD 
+    calc_CISD(hf_det, b0, 2);
+    b0.normalize();
+
+    cout.precision(8);  
+    
+    sparse_solve_SI(b0,target_energy);
+
+    //cout << "expectation val from dense vec:" << dense_b.transpose() * SpH * dense_b <<endl;; 
+    return;
 
 }
