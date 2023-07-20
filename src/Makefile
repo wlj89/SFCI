@@ -2,7 +2,7 @@ CC=icpc
 FLAGS=-std=c++11 -m64 -O2 -qopenmp -xCORE-AVX512# sandybridge
 DIR=-I /users/lwang70/Eigen/eigen
  
-OBJ=main.o functions.o minres.o bitstr.o introsort.o lanczos.o
+OBJ=main.o functions.o bitstr.o introsort.o sparse_solver.o dense_algo.o
 HEADERS=all.h 
 
 #Rules....

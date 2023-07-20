@@ -15,7 +15,7 @@ A package for sparse full configuration interaction (SFCI).
     
     d) `num_orb`: number of spin orbitals 
     
-    e) `nume_e`: number of electrons
+    e) `num_e`: number of electrons
     
     f) `num_thread`: number of cores to be used
     
@@ -39,4 +39,4 @@ or
 
 	python convert_fcidump.py -u sys1-uhf_fcidump sys2-uhf_fcidump ...
 
-The reformated integral files will all ends with \_IN, and are now recognizable by the SFCI main program. 
+The reformated integral files will all end with \_IN, and are now recognizable by the SFCI main program. 
