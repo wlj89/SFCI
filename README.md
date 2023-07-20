@@ -5,13 +5,13 @@ A package for sparse full configuration interaction (SFCI).
 ## Usage
 
 1. Enter `src/` and compile with `make`. You might need to specify the flag relating to cpu architecture. You also need to install Eigen and passing its path via `-I` flag.
-2. Specify the required parameters in **sfci.input**. They are: 
+2. Specify the required parameters in **sfci.input**. One should first specify the task type with `task=ground`. Besides, the following parameters are required: 
 
-    a) `Nd`: size of each Krylov vectors
+    a) `Nd`: max number of determinant contained in each Krylov basis vector
     
     b) `Nl`: dimensionality of the effective Hamiltonian 
     
-    c) `num_block`: maximal number of effective Hamiltonian to be diaogonalized if the calculation does not converge 
+    c) `num_restart`: number of restarting 
     
     d) `num_orb`: number of spin orbitals 
     
@@ -31,8 +31,12 @@ A package for sparse full configuration interaction (SFCI).
 
 ## Reformatting Integrals
 
-Only FCIDUMP format with integrals under the unrestricted HF orbitals is accepeted. For closed shell system this does not affect the result, but we'll make it compatible with restricted HF orbital integrals soon. Now, use `utils/convert_fci.py` to reformat FCIDUMP file:
+Both RHF and UHF integrals in FCIDUMP format are accpeted, but requires some reformatting. Use `utils/convert_fcidump.py` to reformat FCIDUMP file:
 
-    convert_fci.py sys1_fcidump sys2_fcidump ...
+    python convert_fcidump.py -r sys1-rhf_fcidump sys2-rhf_fcidump ...
 
-The reformated integral files will all ends with \_IN, which are now recognizable by the SFCI main program. 
+or
+
+	python convert_fcidump.py -u sys1-uhf_fcidump sys2-uhf_fcidump ...
+
+The reformated integral files will all ends with \_IN, and are now recognizable by the SFCI main program. 
