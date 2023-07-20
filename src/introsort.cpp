@@ -30,7 +30,6 @@ void copy_bckwd(dynVec<DET_TYPE,FLOAT_TYPE>& array, int begin, int i_pos)
         coeff_prev = coeff_now; 
 
     }   
-
     //copy_backward(array.basis.begin()+begin, array.basis.begin()+i, array.basis.begin()+i+1);
 
 }
@@ -88,6 +87,7 @@ void adjust_heap(dynVec<DET_TYPE,FLOAT_TYPE>& array,
 {
     int topIndex = holeIndex;
     int secondChild = 2 * holeIndex + 2; 
+
     while(secondChild < len)
     {
         if (array.basis[begin+secondChild] < array.basis[begin+secondChild-1] )
@@ -109,18 +109,25 @@ void adjust_heap(dynVec<DET_TYPE,FLOAT_TYPE>& array,
 
 void make_heap(dynVec<DET_TYPE,FLOAT_TYPE>& array, int begin, int end)
 {
-    if (begin - end < 2) 
+    
+
+    if (end - begin < 2) 
         return;
     int len = end - begin; 
     int parent = (len-2)/2; 
 
     while (1) 
     {
-        adjust_heap(array, begin, parent, len, array.basis[begin+parent], array.amp[begin+parent]);
+        adjust_heap(array, 
+                    begin, 
+                    parent, 
+                    len, 
+                    array.basis[begin+parent], 
+                    array.amp[begin+parent]);
 
         if (parent == 0)
             return;
-
+        //cout << "parent=" << parent << endl; 
         parent--;
     }
 }
@@ -143,7 +150,7 @@ void sort_heap(dynVec<DET_TYPE,FLOAT_TYPE>& array,
     while(end-begin > 1)
     {
         pop_heap(array, begin, end-1, end-1, array.basis[end-1],array.amp[end-1]); 
-        end--; 
+        end-=1; 
     }
 }
 
@@ -175,36 +182,59 @@ void partial_sort(dynVec<DET_TYPE,FLOAT_TYPE>& array,
                                            int middle, 
                                            int end)
 {   
+    /*
+        the heap sort
+        first form a max heap  
+    */
+
     make_heap(array, begin, middle); 
 
-    for(int i = middle; i <end; i++ )
+    /* this block does not appear useful*/
+    for(int i = middle; i <end; i++)
+    {
         if(array.basis[i] < array.basis[begin])
             pop_heap(array, begin, middle, i, array.basis[i],array.amp[i]);
+    }
 
+    // before this should be a max heap 
     sort_heap(array, begin, middle); 
 }
 
-void introsort_loop(dynVec<DET_TYPE,FLOAT_TYPE>& array, int begin,int end,int depthLimit)
+void introsort_loop(dynVec<DET_TYPE,FLOAT_TYPE>& array, 
+                                             int begin,
+                                             int end,
+                                             int depthLimit)
 {
     while(end - begin > threshold) 
     {   
         // threshold = 16
         if(depthLimit==0)    
         {
-            //heapSortBasis(array,begin,end);
+            // heap sort starts
             partial_sort(array,begin,end,end);  
+            
             return ;
         }   
         
         --depthLimit; 
         
-        //int cut=partitionBasis(array,begin,end,median3Basis(array,begin,begin+(end-begin)/2,end)); 
         //int cut = unguarded_partition(array,begin,end,median3(array,begin,begin+(end-begin)/2,end)); 
-        int cut = unguarded_partition(array,begin,end,median3(array,begin,begin+(end-begin)/2,end-1)); 
+        
+        /*
+            a quicksort style partition 
+        */
+        int cut = unguarded_partition(  array,
+                                        begin,
+                                        end,
+                                        median3(array,begin,begin+(end-begin)/2,end-1)); 
+        
+        // take care of the segment on the right 
         introsort_loop(array,cut,end,depthLimit);
+        
         end=cut;    
     }
 }   
+
 
 void unguarded_linear_insertion(dynVec<DET_TYPE,FLOAT_TYPE>& array,
                                                          int end,
@@ -216,10 +246,17 @@ void unguarded_linear_insertion(dynVec<DET_TYPE,FLOAT_TYPE>& array,
 
     while(value_basis < array.basis[next])
     {
+        /*
+            "next" should be bounded, but it goes to minus. 
+            This means the global minimum is not showing up in the first 16 elelemnts. 
+
+        */
         array.pasteFromIdx(end,next);
         end = next; 
         next--;
+        //cout << "next = " << next<<endl;
     }
+    //cout << "****************************\n";
 
     array.assignValue(end,value_basis, value_amp);
 }
@@ -257,7 +294,6 @@ void final_insertion_sort(dynVec<DET_TYPE,FLOAT_TYPE>& array,int begin, int end)
         insertion_sort(array, begin, begin + threshold);
         
         // unguarded insertion sort 
-
         for (int i = begin + threshold ; i< end ; i++)
             unguarded_linear_insertion(array, i, array.basis[i], array.amp[i]);     
         //unguarded_insertion_sort(array, begin + threshold,end); 
@@ -275,7 +311,10 @@ void introsort(dynVec<DET_TYPE,FLOAT_TYPE>& array,int len)
     {
         //swap(array.amp[0],array.amp[len-1]);
 		//swap(array.basis[0],array.basis[len-1]);
-		introsort_loop(array,0,len,lg(len)*2);    
+		
+        //introsort_loop(array,0,len,lg(len)*2);  
+        introsort_loop(array,0,len,lg(len)*2);     
+
         //cout << "beep\n";
 		final_insertion_sort(array,0,len); 
     }
