@@ -1,7 +1,7 @@
 # SFCI
 
 This repository conatins the codes and the electron-electron integrals required to reproduce the results in _Sparse Full Configuration Interaction_.
-!A package for sparse full configuration interaction (SFCI). 
+ 
 
 ## Usage
 
